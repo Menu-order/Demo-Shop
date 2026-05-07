@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<img src="{{BANNER_URL}}" style="width:100%;display:block;">
+
 <meta property="og:title" content="Menu {{SHOP_NAME}}" />
 <meta property="og:description" content="{{SHOP_TAGLINE}}" />
 <meta property="og:image" content="{{BANNER_URL}}" />
@@ -167,7 +167,6 @@ input,select,button,textarea{font-size:16px!important;-webkit-text-size-adjust:1
   <div id="menuContainer"></div>
 </div>
 
-<!-- BOTTOM SHEET POPUP -->
 <div class="sheet-overlay" id="sheetOverlay" onclick="closeSheet()"></div>
 <div class="sheet" id="sheet">
   <div class="sheet-handle"></div>
@@ -197,7 +196,6 @@ input,select,button,textarea{font-size:16px!important;-webkit-text-size-adjust:1
   </div>
 </div>
 
-<!-- BILL PANEL -->
 <div class="bill-panel" id="billPanel">
   <div class="bill-head">
     <h3>Chi tiết đơn hàng</h3>
@@ -222,7 +220,6 @@ input,select,button,textarea{font-size:16px!important;-webkit-text-size-adjust:1
   </div>
 </div>
 
-<!-- MINI BILL -->
 <div class="mini-bill">
   <div class="mini-bill-inner">
     <div>
@@ -233,7 +230,6 @@ input,select,button,textarea{font-size:16px!important;-webkit-text-size-adjust:1
   </div>
 </div>
 
-<!-- CAPTURE BILL (ẩn) -->
 <div class="capture-wrap">
   <div class="capture-box" id="captureBill">
     <div class="capture-head">
@@ -261,11 +257,8 @@ input,select,button,textarea{font-size:16px!important;-webkit-text-size-adjust:1
 const SHEET_WEBAPP_URL = "{{SHEET_WEBAPP_URL}}";
 const TELEGRAM_BOT_TOKEN = "{{TELEGRAM_BOT_TOKEN}}";
 const TELEGRAM_CHAT_ID = "{{TELEGRAM_CHAT_ID}}";
-
 const UPSELL_DEFS = {{UPSELL_DEFS_JSON}};
-
 let products = {{PRODUCTS_JSON}};
-
 let categories = [...new Set(products.map(p => p.category))];
 let cart = [];
 let orderTime = null;
@@ -544,9 +537,15 @@ function buildSheetPayload(){
     if(i.sugar&&i.sugar!=="N/A")n.push(i.sugar);
     if(i.upsellLabels&&i.upsellLabels.length)n.push("Thêm: "+i.upsellLabels.join(", "));
     if(i.customNote)n.push("Ghi chú: "+i.customNote);
-    return{name:i.name,qty:i.qty,price:i.price,note:n.join(" | ")};
+    return{name:i.name,quantity:i.qty,price:i.price,note:n.join(" | ")};
   });
-  return{block,payment,items};
+  return{
+    shopName:"{{SHOP_NAME}}",
+    customerInfo:block,
+    payment:payment,
+    items:JSON.stringify(items),
+    telegramChatId:TELEGRAM_CHAT_ID
+  };
 }
 
 let isSavingOrder=false;
@@ -562,12 +561,13 @@ async function saveOrderToSheet(){
   const timer=setInterval(()=>{cd--;if(cd>=0)btn.innerHTML=`⏳ Đang lưu... (${cd}s)`;},1000);
   try{
     const payload=buildSheetPayload();
+    const itemsArray=JSON.parse(payload.items);
     const now=new Date();
     const timeStr=now.toLocaleString("vi-VN",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
     document.getElementById("captureOrderTime").innerHTML="⏰ Đặt lúc: "+timeStr;
-    document.getElementById("captureCustomerInfo").innerHTML=`📍 Thông tin: ${payload.block||""}<br>💳 Thanh toán: ${payload.payment||""}`;
-    document.getElementById("captureItems").innerHTML=payload.items.map(i=>`<div class="item-row"><div><div class="item-name">${i.name} x${i.qty}</div><div class="item-note">${i.note}</div></div><div style="white-space:nowrap;padding-left:8px;">${((i.qty||0)*(i.price||0)).toLocaleString("vi-VN")}đ</div></div>`).join("");
-    document.getElementById("captureTotal").innerText=payload.items.reduce((s,i)=>s+(i.qty||0)*(i.price||0),0).toLocaleString("vi-VN")+"đ";
+    document.getElementById("captureCustomerInfo").innerHTML=`📍 Thông tin: ${payload.customerInfo||""}<br>💳 Thanh toán: ${payload.payment||""}`;
+    document.getElementById("captureItems").innerHTML=itemsArray.map(i=>`<div class="item-row"><div><div class="item-name">${i.name} x${i.quantity}</div><div class="item-note">${i.note}</div></div><div style="white-space:nowrap;padding-left:8px;">${((i.quantity||0)*(i.price||0)).toLocaleString("vi-VN")}đ</div></div>`).join("");
+    document.getElementById("captureTotal").innerText=itemsArray.reduce((s,i)=>s+(i.quantity||0)*(i.price||0),0).toLocaleString("vi-VN")+"đ";
     await new Promise(r=>setTimeout(r,500));
     await fetch(SHEET_WEBAPP_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
     await sendBillImageToTelegram();
@@ -576,6 +576,7 @@ async function saveOrderToSheet(){
     clearCart(true);
     setTimeout(()=>{btn.disabled=false;btn.innerHTML=oldText;isSavingOrder=false;},1200);
   }catch(e){
+    console.error("Lỗi:",e);
     clearInterval(timer);btn.innerHTML="❌ Lỗi, thử lại";
     setTimeout(()=>{btn.disabled=false;btn.innerHTML=oldText;isSavingOrder=false;},1500);
   }
